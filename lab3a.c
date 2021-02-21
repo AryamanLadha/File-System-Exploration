@@ -20,6 +20,11 @@ int main(){
     inodes_count = super.s_inodes_count;
     blocks_count = super.s_blocks_count;
     int block_size = 1024 << super.s_log_block_size; /* calculate block size in bytes */
-    printf("Inodes: %d\nBlocks: %d\nBlock Size: %d\n", inodes_count,blocks_count,block_size);
+    int inode_size = super.s_inode_size;
+    int first_inode = super.s_first_ino;
+    int blocks_per_group = super.s_blocks_per_group;
+    int inodes_per_group = super.s_inodes_per_group;
+    char*field = "SUPERBLOCK";
+    printf("%s,%d,%d,%d,%d,%d,%d,%d\n",field,blocks_count,inodes_count,block_size,inode_size,blocks_per_group,inodes_per_group,first_inode);
     exit(0);
 }
