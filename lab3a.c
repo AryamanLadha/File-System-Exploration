@@ -23,6 +23,30 @@ int is_block_used(int bno, char * bitmap)
     offset = (bno-1)%8;
     return ((bitmap[index] & (1 << offset)) );
 }
+void print_directory_entry(int inode, unsigned int data_block, int block_size, int fd){
+    struct ext2_dir_entry entry;
+    int data_block_location = 1024 + (data_block-1)*block_size;
+    int index = 0;
+    while(index < block_size){
+        int x = pread(fd, &entry, sizeof(entry), data_block_location+index);
+        check(x);
+        if(entry.inode != 0){
+            char file_name[EXT2_NAME_LEN+1];
+            memcpy(file_name, entry.name, entry.name_len);
+            file_name[entry.name_len] = 0; /* append null char to the file name */
+            printf("DIRENT,%d,%d,%d,%d,%d,'%s'\n",
+				inode, //parent inode number
+				index, //logical byte offset
+				entry.inode, //inode number of the referenced file
+				entry.rec_len, //entry length
+				entry.name_len, //name length
+				entry.name //name, string, surrounded by single-quotes
+			);
+        }
+        index+= entry.rec_len;
+    }
+}
+
 
 void print_convert_time(time_t* time){
     struct tm *converted_time = gmtime(time);
@@ -69,6 +93,15 @@ void read_inode(int index , int inode_table, int block_size, int fd){
             printf("%d,",inode.i_block[i]);
     }
     printf("\n");
+
+    //direct entries
+	for (int i = 0; i < 12; i++) {
+		if (type == 'd') {
+            if(inode.i_block[i]!=0){
+			    print_directory_entry(index, inode.i_block[i], block_size, fd);
+            }
+		}
+	}
 
 }
 int main(){
