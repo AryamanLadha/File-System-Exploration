@@ -62,6 +62,32 @@ void print_convert_time(time_t* time){
     // 08/07/17 17:58:47
 
 }
+
+void print_indirect_1(int inode, unsigned int block, int block_size, int fd, char type){
+    int block_location = 1024 + (block-1)*block_size;
+    int * data_blocks = malloc(block_size);
+    int num_entries = block_size/sizeof(int);
+    int x = pread(fd, data_blocks, block_size, block_location);
+    check(x);
+    for (int i = 0; i < num_entries; i++) {
+		if (type == 'd') {
+            if(data_blocks[i]!=0){
+			    print_directory_entry(inode, data_blocks[i], block_size, fd);
+            }
+		}
+        if(data_blocks[i]!=0){
+            printf("INDIRECT,%d,%d,%d,%d,%d\n",
+            inode, // I-node number of the owning file (decimal)
+            1,     // (decimal) level of indirection for the block being scanned
+            12+i,  //logical block offset (decimal) represented by the referenced block.
+            block, // block number of the (1, 2, 3) indirect block being scanned (decimal)
+            data_blocks[i]// block number of the referenced block (decimal)
+            );
+        }
+	}
+    free(data_blocks);
+}
+
 void read_inode(int index , int inode_table, int block_size, int fd){
     struct ext2_inode inode;
     int inode_data_location = 1024 + (inode_table-1)*block_size + (index-1)*sizeof(inode);
@@ -102,6 +128,10 @@ void read_inode(int index , int inode_table, int block_size, int fd){
             }
 		}
 	}
+
+    //Indirect entry level 1
+    if(inode.i_block[12]!=0)
+        print_indirect_1(index,inode.i_block[12],block_size, fd, type);
 
 }
 int main(){
