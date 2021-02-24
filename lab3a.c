@@ -11,12 +11,14 @@
 #include <time.h>
 #include <errno.h>
 #include <string.h>
-void check(int x){
-    if(x == -1){
-        fprintf(stderr, "%s\n", strerror(errno));
-        exit(1);
+
+void exit_with_message(int x, char* message, int code){
+    if(x < 0){
+        fprintf(stderr, "%s Exiting with status %d.\n", message, code);
+        exit(code);
     }
 }
+
 int is_block_used(int bno, char * bitmap)
 {
     int index = 0, offset = 0;
@@ -38,7 +40,7 @@ void print_directory_entry(int inode, unsigned int data_block, int block_size, i
     int index = 0;
     while(index < block_size){
         int x = pread(fd, &entry, sizeof(entry), data_block_location+index);
-        check(x);
+        exit_with_message(x,"Pread failed.", 2);
         if(entry.inode != 0){
             char file_name[EXT2_NAME_LEN+1];
             memcpy(file_name, entry.name, entry.name_len);
@@ -79,16 +81,14 @@ void print_indirect_1(int inode, unsigned int block, int block_size, int fd, cha
     int * data_blocks = malloc(block_size);
     int num_entries = block_size/sizeof(int);
     int x = pread(fd, data_blocks, block_size, block_location);
-    check(x);
+    exit_with_message(x,"Pread failed.", 2);
 
     int offset;
     if(depth == 1) offset=12;
-    else if(depth == 2) offset=256+12;
-    else if(depth == 3) offset=65536+256+12;
-    else{
-        printf("WEIRD DEPTH. exiting with 1\n");
-        exit(1);
-    }
+    else if(depth == 2) offset=num_entries+12;
+    else if(depth == 3) offset=(num_entries*num_entries)+num_entries+12;
+    else
+        exit_with_message(-1, "Issue reading inode i_block array elements.", 2);
 
     for (int i = 0; i < num_entries; i++) {
 		if (type == 'd') {
@@ -114,15 +114,15 @@ void print_indirect_2(int inode, unsigned int block, int block_size, int fd, cha
     int block_location = 1024 + (block-1)*block_size;
     int * data_blocks = malloc(block_size);
     int num_entries = block_size/sizeof(int);
-    pread(fd, data_blocks, block_size, block_location);
+    int x = pread(fd, data_blocks, block_size, block_location);
+    exit_with_message(x,"Pread failed.", 2);
     //printf("block location = %d\n", block_location);
     int offset;
-    if(depth == 2) offset=256+12;
-    else if(depth == 3) offset=65536+256+12;
-    else{
-        printf("WEIRD DEPTH. exiting with 1\n");
-        exit(1);
-    }
+    if(depth == 2) offset=num_entries+12;
+    else if(depth == 3) offset=(num_entries*num_entries)+num_entries+12;
+    else
+        exit_with_message(-1, "Wrong depth passed at some point in program.", 2);
+
     for(int i = 0; i < num_entries; i++){
         if(data_blocks[i] != 0){
             printf("INDIRECT,%d,%d,%d,%d,%d\n", inode, 2, offset+i, block, data_blocks[i]);
@@ -135,11 +135,12 @@ void print_indirect_3(int inode, unsigned int block, int block_size, int fd, cha
     int block_location = 1024 + (block-1)*block_size;
     int * data_blocks = malloc(block_size);
     int num_entries = block_size/sizeof(int);
-    pread(fd, data_blocks, block_size, block_location);
+    int x = pread(fd, data_blocks, block_size, block_location);
+    exit_with_message(x,"Pread failed.", 2);
     //printf("block location = %d\n", block_location);
     for(int i = 0; i < num_entries; i++){
         if(data_blocks[i] != 0){
-            printf("INDIRECT,%d,%d,%d,%d,%d\n", inode, 3, 65536+256+12+i, block, data_blocks[i]);
+            printf("INDIRECT,%d,%d,%d,%d,%d\n", inode, 3, (num_entries*num_entries)+num_entries+12+i, block, data_blocks[i]);
         }
         print_indirect_2(inode, data_blocks[i], block_size, fd, type, depth);
     }
@@ -148,10 +149,11 @@ void print_indirect_3(int inode, unsigned int block, int block_size, int fd, cha
 
 
 
-void read_inode(int index , int inode_table, int block_size, int fd){
+void read_inode(int index, int inode_table, int block_size, int fd){
     struct ext2_inode inode;
     int inode_data_location = 1024 + (inode_table-1)*block_size + (index-1)*sizeof(inode);
-    pread(fd, &inode, sizeof(inode), inode_data_location);
+    int x = pread(fd, &inode, sizeof(inode), inode_data_location);
+    exit_with_message(x,"Pread failed.", 2);
     if(inode.i_mode == 0 || inode.i_links_count == 0)
         return;
     char type = '?';
@@ -199,17 +201,22 @@ void read_inode(int index , int inode_table, int block_size, int fd){
 
 
 }
-int main(){
+
+int main(int argc, char *argv[]){
     int fd = 0;
     errno = 0;
     unsigned int inodes_count = 0, blocks_count = 0;
     struct ext2_super_block super;
-    fd = open("trivial.img", O_RDONLY);
-
+    if(argc > 2)
+        exit_with_message(-1, "Parameter Error: Only valid parameters are executable and file system image file.", 1);
+    if(argv[1]==NULL)
+        exit_with_message(-1, "Parameter Error: Must specify file system image file for program to process.", 1);
+    fd = open(argv[1], O_RDONLY);
+    exit_with_message(fd, "Failed to open file.", 1);
 
     //Step1: Print out Super Block information. Always starts at byte 1024
     int x = pread(fd, &super, sizeof(super), 1024);
-    check(x);
+    exit_with_message(x,"Pread failed.", 2);
     inodes_count = super.s_inodes_count;
     blocks_count = super.s_blocks_count;
     int block_size = 1024 << super.s_log_block_size; /* calculate block size in bytes */
@@ -237,7 +244,7 @@ int main(){
         group_block_desc_location  = 1*block_size;
     struct ext2_group_desc descriptor;
     x = pread(fd, &descriptor, sizeof(descriptor), group_block_desc_location);
-    check(x);
+    exit_with_message(x,"Pread failed.", 2);
     int free_blocks = descriptor.bg_free_blocks_count;
     int free_inodes = descriptor.bg_free_inodes_count;
     int block_bitmap = descriptor.bg_block_bitmap;
@@ -257,7 +264,7 @@ int main(){
     int block_bitmap_location = 1024 + (block_bitmap-1)*block_size;
     char*bitmap = malloc(block_size);
     x = pread(fd, bitmap, block_size, block_bitmap_location);
-    check(x);
+    exit_with_message(x,"Pread failed.", 2);
     for(unsigned int i = 1; i<=blocks_count; i++){
         if(!is_block_used(i,bitmap)){
             printf("BFREE,%d\n",i);
@@ -269,7 +276,7 @@ int main(){
     int inode_bitmap_location = 1024 + (inode_bitmap-1)*block_size;
     bitmap = malloc(block_size);
     x = pread(fd, bitmap, block_size, inode_bitmap_location);
-    check(x);
+    exit_with_message(x,"Pread failed.", 2);
     for(unsigned int i = 1; i <= inodes_count; i++){
         if(!is_block_used(i,bitmap)){
             printf("IFREE,%d\n",i);
