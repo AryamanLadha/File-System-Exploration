@@ -23,6 +23,12 @@ int is_block_used(int bno, char * bitmap)
     offset = (bno-1)%8;
     return ((bitmap[index] & (1 << offset)) );
 }
+
+
+void print_dirent_info(char* should_use, int inode, int index, unsigned int temp1, mode_t rec_len, unsigned char name_len, char* name){
+    printf("%s,%d,%d,%d,%d,%d,'%s'\n", should_use, inode, index, temp1, rec_len, name_len, name);
+}
+
 void print_directory_entry(int inode, unsigned int data_block, int block_size, int fd){
     struct ext2_dir_entry entry;
     int data_block_location = 1024 + (data_block-1)*block_size;
@@ -42,6 +48,7 @@ void print_directory_entry(int inode, unsigned int data_block, int block_size, i
 				entry.name_len, //name length
 				entry.name //name, string, surrounded by single-quotes
 			);
+           //print_dirent_info("DIREN", inode, index, entry.inode, entry.rec_len, entry.name_len, entry.name);
         }
         index+= entry.rec_len;
     }
@@ -63,12 +70,23 @@ void print_convert_time(time_t* time){
 
 }
 
-void print_indirect_1(int inode, unsigned int block, int block_size, int fd, char type){
+
+void print_indirect_1(int inode, unsigned int block, int block_size, int fd, char type, int depth){
     int block_location = 1024 + (block-1)*block_size;
     int * data_blocks = malloc(block_size);
     int num_entries = block_size/sizeof(int);
     int x = pread(fd, data_blocks, block_size, block_location);
     check(x);
+
+    int offset;
+    if(depth == 1) offset=12;
+    else if(depth == 2) offset=256+12;
+    else if(depth == 3) offset=65536+256+12;
+    else{
+        printf("WEIRD DEPTH. exiting with 1\n");
+        exit(1);
+    }
+
     for (int i = 0; i < num_entries; i++) {
 		if (type == 'd') {
             if(data_blocks[i]!=0){
@@ -79,7 +97,7 @@ void print_indirect_1(int inode, unsigned int block, int block_size, int fd, cha
             printf("INDIRECT,%d,%d,%d,%d,%d\n",
             inode, // I-node number of the owning file (decimal)
             1,     // (decimal) level of indirection for the block being scanned
-            12+i,  //logical block offset (decimal) represented by the referenced block.
+            offset+i,  //logical block offset (decimal) represented by the referenced block.
             block, // block number of the (1, 2, 3) indirect block being scanned (decimal)
             data_blocks[i]// block number of the referenced block (decimal)
             );
@@ -87,6 +105,45 @@ void print_indirect_1(int inode, unsigned int block, int block_size, int fd, cha
 	}
     free(data_blocks);
 }
+
+
+void print_indirect_2(int inode, unsigned int block, int block_size, int fd, char type, int depth){
+    int block_location = 1024 + (block-1)*block_size;
+    int * data_blocks = malloc(block_size);
+    int num_entries = block_size/sizeof(int);
+    pread(fd, data_blocks, block_size, block_location);
+    //printf("block location = %d\n", block_location);
+    int offset;
+    if(depth == 2) offset=256+12;
+    else if(depth == 3) offset=65536+256+12;
+    else{
+        printf("WEIRD DEPTH. exiting with 1\n");
+        exit(1);
+    }
+    for(int i = 0; i < num_entries; i++){
+        if(data_blocks[i] != 0){
+            printf("INDIRECT,%d,%d,%d,%d,%d\n", inode, 2, offset+i, block, data_blocks[i]);
+            print_indirect_1(inode, data_blocks[i], block_size, fd, type, depth);
+        }
+    }
+}
+
+void print_indirect_3(int inode, unsigned int block, int block_size, int fd, char type, int depth){
+    int block_location = 1024 + (block-1)*block_size;
+    int * data_blocks = malloc(block_size);
+    int num_entries = block_size/sizeof(int);
+    pread(fd, data_blocks, block_size, block_location);
+    //printf("block location = %d\n", block_location);
+    for(int i = 0; i < num_entries; i++){
+        if(data_blocks[i] != 0){
+            printf("INDIRECT,%d,%d,%d,%d,%d\n", inode, 3, 65536+256+12+i, block, data_blocks[i]);
+        }
+        print_indirect_2(inode, data_blocks[i], block_size, fd, type, depth);
+    }
+}
+
+
+
 
 void read_inode(int index , int inode_table, int block_size, int fd){
     struct ext2_inode inode;
@@ -131,7 +188,12 @@ void read_inode(int index , int inode_table, int block_size, int fd){
 
     //Indirect entry level 1
     if(inode.i_block[12]!=0)
-        print_indirect_1(index,inode.i_block[12],block_size, fd, type);
+        print_indirect_1(index,inode.i_block[12],block_size, fd, type, 1);
+    if(inode.i_block[13]!=0)
+        print_indirect_2(index,inode.i_block[13],block_size, fd, type, 2);
+    if(inode.i_block[14]!=0)
+        print_indirect_3(index,inode.i_block[14],block_size, fd, type, 3);
+
 
 }
 int main(){
