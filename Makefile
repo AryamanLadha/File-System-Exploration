@@ -1,6 +1,6 @@
-#NAME: Aryaman Ladha
-#EMAIL: ladhaaryaman@ucla.edu
-#ID: 805299802
+#NAME: Aryaman Ladha, Akhil Vinta
+#EMAIL: ladhaaryaman@ucla.edu, akhil.vinta@gmail.com
+#ID: 805299802, 405288527
 
 CC = gcc
 CFLAGS = -g -Wall -Wextra
