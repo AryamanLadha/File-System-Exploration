@@ -29,11 +29,6 @@ int is_block_used(int bno, char * bitmap)
     return ((bitmap[index] & (1 << offset)) );
 }
 
-
-void print_dirent_info(char* should_use, int inode, int index, unsigned int temp1, mode_t rec_len, unsigned char name_len, char* name){
-    printf("%s,%d,%d,%d,%d,%d,'%s'\n", should_use, inode, index, temp1, rec_len, name_len, name);
-}
-
 void print_directory_entry(int inode, unsigned int data_block, int block_size, int fd){
     struct ext2_dir_entry entry;
     int data_block_location = 1024 + (data_block-1)*block_size;
@@ -53,7 +48,6 @@ void print_directory_entry(int inode, unsigned int data_block, int block_size, i
 				entry.name_len, //name length
 				entry.name //name, string, surrounded by single-quotes
 			);
-           //print_dirent_info("DIREN", inode, index, entry.inode, entry.rec_len, entry.name_len, entry.name);
         }
         index+= entry.rec_len;
     }
@@ -207,7 +201,7 @@ int main(int argc, char *argv[]){
     errno = 0;
     unsigned int inodes_count = 0, blocks_count = 0;
     struct ext2_super_block super;
-    if(argc > 2)
+    if(argc != 2)
         exit_with_message(-1, "Parameter Error: Only valid parameters are executable and file system image file.", 1);
     if(argv[1]==NULL)
         exit_with_message(-1, "Parameter Error: Must specify file system image file for program to process.", 1);
